@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Medical Chatbot</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f0f0;
+      padding: 40px;
+      display: flex;
+      justify-content: center;
+    }
+    #formContainer {
+      background: #fff;
+      padding: 20px;
+      border-radius: 10px;
+      width: 400px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      margin-right: 40px;
+    }
+    #queueDisplay {
+      background: #fff;
+      padding: 20px;
+      border-radius: 10px;
+      width: 300px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    .hidden { display: none; }
+    button {
+      padding: 10px;
+      margin: 5px 0;
+      width: 100%;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      margin-top: 5px;
+      margin-bottom: 15px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    #leftPanel {
+      position: fixed;
+      left: 20px;
+      top: 40px;
+    }
+    h4 {
+      margin-top: 20px;
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 5px;
+    }
+    .center { text-align: center; }
+  </style>
+</head>
+<body>
+
+<!-- Admin Panel -->
+<div id="leftPanel">
+  <button onclick="promptPassword()">Admin Reset</button>
+  <div id="adminControls" class="hidden">
+    <button onclick="resetDoctorToken('Mehta')">Reset Dr. Mehta</button>
+    <button onclick="resetDoctorToken('Singh')">Reset Dr. Singh</button>
+    <button onclick="resetEmergency()">Reset Emergency</button>
+  </div>
+</div>
+
+<!-- Welcome Screen -->
+<div id="welcomeScreen" class="center">
+  <h2>Hi! I'm your Medical Assistant</h2>
+  <p>I’ll help you register for doctor consultation or emergency care.</p>
+  <button onclick="startForm()">Get Started</button>
+</div>
+
+<!-- Form Wizard -->
+<div id="formContainer" class="hidden">
+  <div id="step1">
+    <label>Name:</label>
+    <input type="text" id="name" />
+    <button onclick="goToStep(2)">Next</button>
+  </div>
+
+  <div id="step2" class="hidden">
+    <label>Gender:</label>
+    <button onclick="selectGender('Male')">Male</button>
+    <button onclick="selectGender('Female')">Female</button>
+  </div>
+
+  <div id="step3" class="hidden">
+    <label>Phone:</label>
+    <input type="text" id="phone" />
+    <button onclick="goToStep(4)">Next</button>
+  </div>
+
+  <div id="step4" class="hidden">
+    <label>Age:</label>
+    <input type="number" id="age" />
+    <button onclick="goToStep(5)">Next</button>
+  </div>
+
+  <div id="step5" class="hidden">
+    <label>Choose a service:</label>
+    <button onclick="chooseService('doctor')">Doctor Consultation</button>
+    <button onclick="chooseService('emergency')">Emergency Ward</button>
+  </div>
+
+  <div id="stepDoctor" class="hidden">
+    <label>Select a doctor:</label>
+    <button onclick="handleDoctor('Mehta', 10)">Dr. Mehta</button>
+    <button onclick="handleDoctor('Singh', 15)">Dr. Singh</button>
+  </div>
+
+  <div id="stepEmergency" class="hidden">
+    <label>Select emergency level:</label>
+    <button onclick="handleEmergency('Critical')">Critical</button>
+    <button onclick="handleEmergency('Unconscious')">Unconscious</button>
+    <button onclick="handleEmergency('Conscious')">Conscious</button>
+  </div>
+
+  <div id="result" class="hidden"></div>
+</div>
+
+<!-- Live Queue Display -->
+<div id="queueDisplay">
+  <h3>Live Queue</h3>
+  <h4>Doctor Queue</h4>
+  <div id="doctorQueue"></div>
+  <h4>Emergency Queue</h4>
+  <div id="emergencyQueue"></div>
+</div>
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyDaf8ee80C048POp9u0GtcKOhYI-YRZzIU",
+  authDomain: "medical-chatbot-87011.firebaseapp.com",
+  projectId: "medical-chatbot-87011",
+  storageBucket: "medical-chatbot-87011.appspot.com",
+  messagingSenderId: "1096354369130",
+  appId: "1:1096354369130:web:24684f53163c08ee940413",
+  databaseURL: "https://medical-chatbot-87011-default-rtdb.firebaseio.com"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const userData = {};
+const priorityLevel = { Critical: 1, Unconscious: 2, Conscious: 3 };
+
+// Start Wizard
+function startForm() {
+  document.getElementById("welcomeScreen").classList.add("hidden");
+  document.getElementById("formContainer").classList.remove("hidden");
+  goToStep(1);
+}
+function goToStep(step) {
+  for (let i = 1; i <= 5; i++) {
+    const el = document.getElementById("step" + i);
+    if (el) el.classList.add("hidden");
+  }
+  document.getElementById("step" + step).classList.remove("hidden");
+}
+function selectGender(gender) {
+  userData.gender = gender;
+  goToStep(3);
+}
+function chooseService(service) {
+  userData.name = document.getElementById("name").value.trim();
+  userData.phone = document.getElementById("phone").value.trim();
+  userData.age = document.getElementById("age").value.trim();
+  userData.timestamp = Date.now();
+  userData.service = service;
+
+  document.getElementById("step5").classList.add("hidden");
+  if (service === "doctor") {
+    document.getElementById("stepDoctor").classList.remove("hidden");
+  } else {
+    document.getElementById("stepEmergency").classList.remove("hidden");
+  }
+}
+// Doctor token logic
+function handleDoctor(name, perPatient) {
+  const ref = db.ref(`tokens/${name}`);
+  ref.transaction(current => (current || 1)).then(result => {
+    const token = result.snapshot.val();
+    ref.set(token + 1);
+    userData.token = token;
+    userData.doctorOrEmergency = name;
+    db.ref(`doctorQueue/${name}/${token}`).set(userData);
+    sendToGoogleSheet(userData);
+    showResult(`Registered for Dr. ${name}<br>Token: <strong>${token}</strong><br>Wait time: ${perPatient * (token - 1)} min`);
+    updateQueues();
+  });
+}
+
+// Emergency logic
+function handleEmergency(level) {
+  userData.emergencyLevel = level;
+  userData.timestamp = Date.now();
+
+  db.ref('emergency/queue').once('value').then(snapshot => {
+    const data = snapshot.val() || {};
+    const all = [];
+
+    Object.entries(data).forEach(([lvl, entries]) => {
+      Object.entries(entries).forEach(([id, patient]) => {
+        all.push({ ...patient, id, priority: priorityLevel[lvl] });
+      });
+    });
+
+    const newPatient = { ...userData, priority: priorityLevel[level] };
+    all.push(newPatient);
+
+    all.sort((a, b) => a.priority - b.priority || a.timestamp - b.timestamp);
+    all.forEach((p, i) => p.token = i + 1);
+
+    const clear = {};
+    ['Critical', 'Unconscious', 'Conscious'].forEach(type => {
+      clear[`emergency/queue/${type}`] = null;
+    });
+
+    db.ref().update(clear).then(() => {
+      const updates = {};
+      all.forEach(p => {
+        const id = p.name + "_" + p.timestamp;
+        updates[`emergency/queue/${p.emergencyLevel}/${id}`] = p;
+      });
+
+      db.ref().update(updates).then(() => {
+        sendToGoogleSheet(newPatient);
+        showResult(`Emergency - ${level}<br>Token: <strong>${newPatient.token}</strong>`);
+        updateQueues();
+      });
+    });
+  });
+}
+
+// Show result
+function showResult(msg) {
+  document.getElementById("stepDoctor")?.classList.add("hidden");
+  document.getElementById("stepEmergency")?.classList.add("hidden");
+  const box = document.getElementById("result");
+  box.innerHTML = msg;
+  box.classList.remove("hidden");
+}
+
+// Live queue update
+function updateQueues() {
+  db.ref('doctorQueue').once('value').then(snapshot => {
+    const data = snapshot.val() || {};
+    let out = "";
+    Object.entries(data).forEach(([doc, patients]) => {
+      out += `<strong>${doc}</strong><br>`;
+      Object.entries(patients).forEach(([token, p]) => {
+        out += `Token #${token} – ${p.name}<br>`;
+      });
+      out += "<br>";
+    });
+    document.getElementById("doctorQueue").innerHTML = out || "No patients yet.";
+  });
+
+  db.ref('emergency/queue').once('value').then(snapshot => {
+    const data = snapshot.val() || {};
+    let all = [];
+    Object.entries(data).forEach(([lvl, entries]) => {
+      Object.values(entries).forEach(p => {
+        all.push({ ...p, priority: priorityLevel[lvl] });
+      });
+    });
+    all.sort((a, b) => a.priority - b.priority || a.timestamp - b.timestamp);
+    const out = all.map(p => `${p.emergencyLevel}<br>Token #${p.token} – ${p.name}`).join("<br><br>");
+    document.getElementById("emergencyQueue").innerHTML = out || "No patients yet.";
+  });
+}
+
+// Admin panel functions
+function promptPassword() {
+  const pw = prompt("Enter admin password:");
+  if (pw === "1234") {
+    document.getElementById("adminControls").classList.remove("hidden");
+  } else {
+    alert("Incorrect password");
+  }
+}
+function resetDoctorToken(name) {
+  db.ref(`tokens/${name}`).set(1);
+  db.ref(`doctorQueue/${name}`).remove();
+  updateQueues();
+}
+function resetEmergency() {
+  db.ref("emergency/queue").remove();
+  updateQueues();
+}
+
+// Google Sheets Integration
+function sendToGoogleSheet(data) {
+  fetch("https://script.google.com/macros/s/AKfycbyrrTY6_1satpBLTIC-OBRzQC2-Y_IADWrvsJRLBylNG5vL1CpPSOsGSwiMF-kzj4Tz/exec", {
+    method: "POST",
+    mode: "no-cors",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data)
+  });
+}
+
+// Initial queue update on load
+updateQueues();
+</script>
+</body>
+</html>
